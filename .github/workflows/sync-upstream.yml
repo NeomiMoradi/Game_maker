@@ -1,0 +1,42 @@
+name: Sync fork from upstream
+
+on:
+  schedule:
+    - cron: "17 6 * * *"   # Runs daily at 06:17 UTC
+  workflow_dispatch: {}     # Manual trigger
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout your fork
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Add upstream and fetch
+        run: |
+          # Detect repo name from the current origin
+          ORIGIN_URL=$(git remote get-url origin)
+          REPO=$(basename "$ORIGIN_URL" .git)
+          git remote add upstream https://github.com/sharonba99/$REPO.git || true
+          git fetch upstream
+
+      - name: Rebase main on upstream/main
+        run: |
+          git checkout main || git checkout master
+          CURRENT_BRANCH=$(git branch --show-current)
+          # Try main first, fallback to master
+          if git rev-parse --verify upstream/main >/dev/null 2>&1; then
+            git rebase upstream/main || (git rebase --abort && exit 1)
+          else
+            git rebase upstream/master || (git rebase --abort && exit 1)
+          fi
+
+      - name: Push updated default branch
+        run: |
+          # Push back to your fork
+          git push origin HEAD --force-with-lease
