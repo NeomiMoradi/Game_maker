@@ -7,7 +7,7 @@ on:
       - ".github/workflows/sync-upstream.yml"
   workflow_dispatch: {}
   schedule:
-    - cron: "17 6 * * *"   # note: cron won't auto-run in forks
+    - cron: "17 6 * * *"   # runs daily (ignored in forks, manual still works)
 
 permissions:
   contents: write
@@ -21,16 +21,29 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
       - name: Add upstream and fetch
         run: |
-          git remote add upstream https://github.com/sharonba99/<Game_maker
->.git || true
-          git fetch upstream
+          ORIGIN_URL=$(git remote get-url origin)
+          REPO=$(basename "$ORIGIN_URL" .git)
+          git remote add upstream https://github.com/sharonba99/$REPO.git || echo "Upstream already exists"
+          git fetch upstream || echo "Could not fetch upstream, check URL"
 
-      - name: Rebase main on upstream/main
+      - name: Try rebase main
         run: |
           git checkout main || git checkout master
-          git rebase upstream/main || (git rebase --abort && exit 1)
+          if git show-ref --quiet refs/remotes/upstream/main; then
+            git rebase upstream/main || (git rebase --abort && exit 0)
+          elif git show-ref --quiet refs/remotes/upstream/master; then
+            git rebase upstream/master || (git rebase --abort && exit 0)
+          else
+            echo "No upstream/main or upstream/master branch found"
+          fi
 
-      - name: Push updated branch
-        run: git push origin main --force-with-lease
+      - name: Push changes back to your fork
+        run: |
+          git push origin main --force-with-lease || git push origin master --force-with-lease || echo "Nothing to push"
